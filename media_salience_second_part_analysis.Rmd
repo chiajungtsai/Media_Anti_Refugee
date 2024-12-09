@@ -1,0 +1,820 @@
+---
+title: "media_expo_Anti_immi_second_model (Amount_of_media_coverage)"
+author: "Chia-Jung Tsai"
+date: "8 7 2022"
+output:
+  html_document: default
+  pdf_document: default
+---
+# Data introduction
+
+## Outcome (from SOEP)
+#### dt.rda
+
+- logitidinal data across 2010-2017 and 16 German states (SOEP data) 
+
+- Plj0046: Do you concern the immigration to Germany?
+ (1=very concerned, 2= somewhat concerned, 3= not concerned at all)
+
+
+## predictors 
+
+#### Land_year_longformat.rda (German Federal Official Statistics)
+
+- Frn_rate: Rate of Foreigner in each state by year 2010-2017 
+(e.g. (N of Foreigners in Berlin in 2010)/(Total Population in Berlin in 2010)
+
+- Asl_rate: Rate of Asylum applications in each state by year 2010-2017
+ (e.g. (N of Asylum applications in Berlin in 2010)/(Total Population in Berlin in 2010)
+
+- Log_Asylum_rate: log number of Asl_rate
+
+- Frn_log: log Number of Foreigners in each state by year 2010-2017 (e.g. log N of Foreigners in Berlin in 2010) 
+
+- Asl_log: log Number of Asylum applications in each state by year 2010-2017 (e.g. log N of Asylum applications in Berlin in 2010)
+
+- Land: German states (16 states) syear: survey year (2010-2017) 
+
+
+#### Media_by_Gdelt.rda (Gdelt Event database) 
+#### state level data
+Pub_Year: The publication year of the news article
+GE_state: German states, which are equal to "Land" in other dataset
+
+Artl_all: the number of articles of all news events per state per year
+Artl_ref: the number of articles of all refugee news events per state per year 
+AvgTone_all: the average tone of all news events per state per year
+AvgTOne_ref: the average tone of all refugee news events per state per year 
+
+Artl: (N of Refugee Articles per year per state)/(N of all Articles per year per state)
+Tone: (average sentiment of Refugee Articles per year per state)-(average sentiment of all Articles per year per state)
+
+#### Media_by_Gdelt_national.rda
+#### national level media data!!!!!!!!!!!!!!!!!!
+
+"NA" - mentioned Germany, no city
+"Germany (general)" : general Germany news
+
+Artl_all: the number of articles of all news events per state per year
+Artl_ref: the number of articles of all refugee news events per state per year 
+AvgTone_all: the average tone of all news events per state per year
+AvgTOne_ref: the average tone of all refugee news events per state per year 
+
+Artl: (N of Refugee Articles per year per state)/(N of all Articles per year per state)
+Tone: (average sentiment of Refugee Articles per year per state)-(average sentiment of all Articles per year per state)
+
+
+##### Introduction for Gdelt #####
+- The Gdelt Event database (1979-2020) 
+- 1 row = 1 event
+- Select Events mainly by CAMEO Event code (e.g. CAMEO 0233 "Appeal for humanitarian aid" : Make an appeal for, request, or suggest humanitarian assistance. Note: Requests for or suggestions of food, medicine, and related personnel, as well as shelter and protection, are all coded as 0233. Calls by refugees to be let into the territories of other countries (which should be coded as targets) and asylum requests all fit here. Example: Oxfam Canada today called on the world community to help save tens of thousands of Afghan civilians threatened with starvation. )
+- All CAMEO codes used here are: 0233, 030, 0333,0343, 075, 0833, 1033, 1223, 1424,1623, 1663, 180, 1822, 184, and 201. Besides, events with "REF" (refugee) code in columns 'Actor1Code' and 'Actor2Code' are also included in the data. 
+- "NumArticles" and "AvgTone: In this Event data format, there are two columns "NumArticles" and "AvgTone," which refer the number and the average sentiment all the news articles regarding this event. We aggregate these 2 columns by year ("month" is also available to be used).We aggregate these 2 columns by year ("month" is also available to be used).
+- Date : After 2013, data collection date ("DATEADDED") is treated as date of the event news (Gdelt collects data every 15 mins) 
+Before 2013, we use the information of the file name (e.g. 20210828.export.CSV.zip ) to recognise the data. The dataset we have so far includes year and month  
+- Geo-location: select by columns 'Actor1Geo_FullName', 'Actor2Geo_FullName' and 'ActionGeo_FullName' for the information 'country', 'state', and 'city.' 
+- ave_artcl: the average amount of articles relating with refugees in a year (e.g.average of total amount of Jan to Dec in 2010) 
+- ave_tone: the average sentiments of articles relating with refugees in a year (e.g.average of average sentiment of Jan to Dec in 2010)
+
+
+## covariate
+### dt_soep_covariate.rda
+
+- pid : personal ID
+- hid.x : household ID
+- hid.y : household ID
+- Land : German states
+- sex_re : sex (male=1, female=0)
+- higher_edu : combine plg0079_v3 (until 2013) & plg0079_v4 (after2014) (higher edu=1, others=0)
+- edu_is97 : isced97 index (higher edu=1, others=0)
+- edu_is11 : isced11 index (higher edu=1, others=0)
+- edu_ismin : casmin classification (higher edu=1, others=0)
+- geburt_v2: birth year
+- nationality: Germany=1, others= 0
+
+
+### model set up:  
+- concerns of immigrants= Rate of Asylum seekers*Media exposure (Amount_of_media_coverage)
+
+--with covariates
+--with national-level media data
+
+### Theory: Politicize place assumption (Daniel Hopkins, 2010) people perceive the demographic changes in the surrounding area when the media coverage interacts with it 
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(ggplot2)
+library(lme4)
+library(pscl)
+library(jtools)
+library(haven)
+library(plm)
+library(gplots)
+library(sjPlot)
+library(sjmisc)
+
+options(scipen = 999)
+
+```
+
+```{r}
+
+load(file = "U:/media_salience/Data/Data_2nd_Analysis.rda")
+
+```
+
+```{r}
+#for revising the figure
+dt_n <- dt_2 %>% rename (Log_Asylum_rate=logASLr, Amount_of_media_coverage=Artl, Amount_of_national_media = Artl_national, Edu=edu_is97,  
+                         sex =sex_re)
+
+```
+
+
+# Random slope model with constrained intercept
+
+## Original model : Log_Asylum_rate*Amount_of_media_coverage
+### model1
+
+```{r}
+# random slope with constrained intercept
+
+model_1 <-glmer(wrimm ~ 1+Log_Asylum_rate*Amount_of_media_coverage + factor(year) +(Log_Asylum_rate*Amount_of_media_coverage-1|Land), data=dt_n, family=binomial(link = "logit"), 
+                control= glmerControl(optimizer="bobyqa"),nAGQ =0)
+summary(model_1)
+
+exp(coef(model_1)$Land)
+
+re_model1<-ranef(model_1, which="Land", conVar=TRUE)
+names(re_model1)<-"The effect of asylum application rate and media salience across regions"
+lattice::dotplot(re_model1, scales = list(x =list(relation = 'free')))
+
+saveRDS(model_1, file = "U:/media_salience/Paper1_output_second_analysis/model_1.rds")
+
+```
+  
+### Prediction for random slope with constrained intercept
+```{r}
+# Odds table for main preditors
+
+tab_model(model_1)
+
+```
+
+```{r}
+
+# Extract out the fixed-effect slope for our main effect
+slope_1 <- rep(fixef(model_1)['Log_Asylum_rate:Amount_of_media_coverage'],16)
+
+# Extract out the random-effect slopes for Land
+Land_1 <- ranef(model_1)$Land
+
+# Create a new column for the slope
+Land_1$slope <- Land_1$`Log_Asylum_rate:Amount_of_media_coverage` + slope_1
+
+# Use the row names to create a Land name column
+Land_1$Land <- rownames(Land_1)
+Land_1$intercept <- fixef(model_1)['(Intercept)']
+
+ggplot(data=Land_1)+
+  geom_abline(aes(slope=slope,intercept=intercept,color=Land))+
+  theme_minimal()+
+  xlim(c(0,2))+ylim(c(-3,3))+
+  scale_colour_discrete(breaks=unique(Land_1$Land[order(Land_1$slope, decreasing = TRUE)]))
+
+
+```
+  
+### marginal effects
+```{r}
+# marginal effects of year
+library(ggeffects)
+pd_yr_1<- ggpredict(model_1,term="year")
+plot(pd_yr_1)+ylim(c(0,0.5))
+
+```
+
+```{r}
+# marginal effects of log Asylum rate/ Article
+pd_ASLr_1<- ggpredict(model_1,term="Log_Asylum_rate[all]")
+plot(pd_ASLr_1)+ylim(c(0,0.4))
+
+pd_Artl_1<- ggpredict(model_1,term="Amount_of_media_coverage [all]")
+plot(pd_Artl_1)+ylim(c(0,0.4))
+
+```
+
+```{r}
+
+ggpredict(model_1,term=c("Log_Asylum_rate [all]","Amount_of_media_coverage")) %>% plot()
+
+ggpredict(model_1,term=c("Log_Asylum_rate [all]","Amount_of_media_coverage"),type = "re") %>% plot()
+
+```
+  
+## model checking and diagnostics for random slope with constrained intercept (not so sure)
+```{r}
+# model checking and diagnostics for random slope with constrained intercept
+# linearity of x (residual plot of x)
+ggplot(data.frame(x1=dt_n$Log_Asylum_rate,pearson=residuals(model_1,type="pearson")),
+      aes(x=x1,y=pearson)) +
+    geom_point() +
+    theme_bw()
+
+ggplot(data.frame(x2=dt_n$Amount_of_media_coverage,pearson=residuals(model_1,type="pearson")),
+      aes(x=x2,y=pearson)) +
+    geom_point() +
+    theme_bw()
+
+
+```
+
+```{r}
+# Independence (if the x1 x2 correlate with group1) :  Log_Asylum_rate correlates with group effect (fixed effect may be a bit biased)
+
+means_1 <- aggregate(dt_n[,c("Log_Asylum_rate","Amount_of_media_coverage")],by=list(dt_n$Land),FUN=mean)
+glmcoefs_1 <- summary(glm(wrimm ~ Log_Asylum_rate + Amount_of_media_coverage + Land, data=dt_n))$coefficients[,"Estimate"]
+means_1$effects <- c(0,glmcoefs_1[substr(names(glmcoefs_1),1,4) == "Land"])
+means_1$effects <- means_1$effects - mean(means_1$effects)
+
+cor(means_1[,c("Log_Asylum_rate","Amount_of_media_coverage","effects")])
+
+ggplot(means_1, aes(x=Log_Asylum_rate,y=effects)) +
+    geom_point() +
+    theme_bw()
+
+ggplot(means_1, aes(x=Amount_of_media_coverage,y=effects)) +
+    geom_point() +
+    theme_bw()
+
+fixef(model_1)
+glmcoefs_1[1:3]
+
+```
+
+```{r}
+
+# level 1 QQ plot (to check normality)
+qqnorm(residuals(model_1))
+qqline(residuals(model_1))
+
+hist(residuals(model_1)) 
+
+# level 2 QQ plot (to check normality) : does not work 
+# stats::qqnorm(model_1, ~ranef(.)) 
+# qqnorm(model_1, ~ resid(., type = "p") | year, abline = c(0, 1))
+
+
+```
+
+```{r}
+# Sensitivity to data (check that your model is not influenced by one or a small set of observations)
+
+ggplot(data.frame(lev=hatvalues(model_1),pearson=residuals(model_1,type="pearson")),
+      aes(x=lev,y=pearson)) +
+    geom_point() +
+    theme_bw()
+
+
+```
+   
+
+
+
+
+
+## Original model+national-level-media-salience  : Log_Asylum_rate*Amount_of_media_coverage + Amount_of_national_media
+### model1.1
+
+```{r}
+# random slope with constrained intercept
+
+model_1.1 <-glmer(wrimm ~ 1+Log_Asylum_rate*Amount_of_media_coverage + Amount_of_national_media + factor(year) +(Log_Asylum_rate*Amount_of_media_coverage-1|Land), data=dt_n, family=binomial(link = "logit"), 
+                control= glmerControl(optimizer="bobyqa"),nAGQ =0)
+summary(model_1.1)
+
+exp(coef(model_1.1)$Land)
+
+re_model1.1 <-ranef(model_1.1, which="Land", conVar=TRUE)
+names(re_model1.1)<-"Figure 3:The effect of asylum application rate and media salience across regions"
+lattice::dotplot(re_model1.1, scales = list(x =list(relation = 'free')))
+
+saveRDS(model_1.1, file = "U:/media_salience/Paper1_output_second_analysis/model_1_1.rds")
+
+```
+
+
+### Prediction for random slope with constrained intercept
+```{r}
+# Odds table for main preditors
+
+tab_model(model_1.1)
+
+```
+
+```{r}
+
+# Extract out the fixed-effect slope for our main effect
+slope_1.1 <- rep(fixef(model_1.1)['Log_Asylum_rate:Amount_of_media_coverage'],16)
+
+# Extract out the random-effect slopes for Land
+Land_1.1 <- ranef(model_1.1)$Land
+
+# Create a new column for the slope
+Land_1.1$slope <- Land_1.1$`Log_Asylum_rate:Amount_of_media_coverage` + slope_1.1
+
+# Use the row names to create a Land name column
+Land_1.1$Land <- rownames(Land_1.1)
+Land_1.1$intercept <- fixef(model_1.1)['(Intercept)']
+
+ggplot(data=Land_1.1)+
+  geom_abline(aes(slope=slope,intercept=intercept,color=Land))+
+  theme_minimal()+
+  xlim(c(0,2))+ylim(c(-3,3))+
+  scale_colour_discrete(breaks=unique(Land_1$Land[order(Land_1$slope, decreasing = TRUE)]))
+
+
+```
+
+
+  
+### marginal effects
+```{r}
+# marginal effects of year
+pd_yr_1.1<- ggpredict(model_1.1,term="year")
+plot(pd_yr_1.1)+ylim(c(0,0.5))
+
+```
+
+```{r}
+# marginal effects of log Asylum rate/ Article
+pd_ASLr_1.1<- ggpredict(model_1.1,term="Log_Asylum_rate[all]")
+plot(pd_ASLr_1.1)
+
+pd_Artl_1.1<- ggpredict(model_1.1,term="Amount_of_media_coverage [all]")
+plot(pd_Artl_1.1)
+
+```
+
+```{r}
+
+ggpredict(model_1.1,term=c("Log_Asylum_rate [all]","Amount_of_media_coverage")) %>% plot()
+
+ggpredict(model_1.1,term=c("Log_Asylum_rate [all]","Amount_of_media_coverage"),type = "re") %>% plot()
+
+```
+
+
+## Original model+ controls : Log_Asylum_rate*Amount_of_media_coverage + Edu + nationality + sex + age
+### model1.2
+
+```{r}
+# random slope with constrained intercept
+
+model_1.2 <-glmer(wrimm ~ 1+Log_Asylum_rate*Amount_of_media_coverage + Edu + nationality + sex + age+ factor(year) +(Log_Asylum_rate*Amount_of_media_coverage-1|Land), data=dt_n, family=binomial(link = "logit"), 
+                control= glmerControl(optimizer="bobyqa"),nAGQ =0)
+summary(model_1.2)
+
+exp(coef(model_1.2)$Land)
+
+re_model1.2 <-ranef(model_1.2, which="Land", conVar=TRUE)
+names(re_model1.2)<-"Figure 3:The effect of asylum application rate and media salience across regions"
+lattice::dotplot(re_model1.2, scales = list(x =list(relation = 'free')))
+
+saveRDS(model_1.2, file = "U:/media_salience/Paper1_output_second_analysis/model_1_2.rds")
+
+```
+### Prediction for random slope with constrained intercept
+```{r}
+# Odds table for main preditors
+
+tab_model(model_1.2)
+
+```
+
+```{r}
+
+# Extract out the fixed-effect slope for our main effect
+slope_1.2 <- rep(fixef(model_1.2)['Log_Asylum_rate:Amount_of_media_coverage'],16)
+
+# Extract out the random-effect slopes for Land
+Land_1.2 <- ranef(model_1.2)$Land
+
+# Create a new column for the slope
+Land_1.2$slope <- Land_1.2$`Log_Asylum_rate:Amount_of_media_coverage` + slope_1.2
+
+# Use the row names to create a Land name column
+Land_1.2$Land <- rownames(Land_1.2)
+Land_1.2$intercept <- fixef(model_1.2)['(Intercept)']
+
+ggplot(data=Land_1.2)+
+  geom_abline(aes(slope=slope,intercept=intercept,color=Land))+
+  theme_minimal()+
+  xlim(c(0,2))+ylim(c(-3,3))+
+  scale_colour_discrete(breaks=unique(Land_1$Land[order(Land_1$slope, decreasing = TRUE)]))
+
+
+```
+
+
+
+
+
+## Original model+ national-level media + controls : Log_Asylum_rate*Amount_of_media_coverage+ Amount_of_national_media + Edu + nationality + sex + age
+### model1.3
+
+```{r}
+# random slope with constrained intercept
+
+model_1.3 <-glmer(wrimm ~ 1+Log_Asylum_rate*Amount_of_media_coverage + Amount_of_national_media + Edu + nationality + sex + age+ factor(year) +(Log_Asylum_rate*Amount_of_media_coverage-1|Land), data=dt_n, family=binomial(link = "logit"), 
+                control= glmerControl(optimizer="bobyqa"),nAGQ =0)
+summary(model_1.3)
+
+exp(coef(model_1.3)$Land)
+
+re_model1.3 <-ranef(model_1.3, which="Land", conVar=TRUE)
+names(re_model1.3)<-"The effect of asylum application rate and media salience across regions"
+lattice::dotplot(re_model1.3, scales = list(x =list(relation = 'free')))
+
+saveRDS(model_1.3, file = "U:/media_salience/Paper1_output_second_analysis/model_1_3.rds")
+
+```
+
+### Prediction for random slope with constrained intercept
+```{r}
+# Odds table for main preditors
+
+tab_model(model_1.3)
+
+```
+
+```{r}
+
+# Extract out the fixed-effect slope for our main effect
+slope_1.3 <- rep(fixef(model_1.3)['Log_Asylum_rate:Amount_of_media_coverage'],16)
+
+# Extract out the random-effect slopes for Land
+Land_1.3 <- ranef(model_1.3)$Land
+
+# Create a new column for the slope
+Land_1.3$slope <- Land_1.3$`Log_Asylum_rate:Amount_of_media_coverage` + slope_1.3
+
+# Use the row names to create a Land name column
+Land_1.3$Land <- rownames(Land_1.3)
+Land_1.3$intercept <- fixef(model_1.3)['(Intercept)']
+
+ggplot(data=Land_1.3)+
+  geom_abline(aes(slope=slope,intercept=intercept,color=Land))+
+  theme_minimal()+
+  xlim(c(0,2))+ylim(c(-3,3))+
+  scale_colour_discrete(breaks=unique(Land_1$Land[order(Land_1$slope, decreasing = TRUE)]))
+
+
+```
+
+
+
+## model with interation with national media  : Log_Asylum_rate*Amount_of_media_coverage+ Log_Asylum_rate*Amount_of_national_media
+### model2
+
+```{r}
+# random slope with constrained intercept
+
+model_2 <-glmer(wrimm ~ 1+Log_Asylum_rate*Amount_of_media_coverage + Log_Asylum_rate*Amount_of_national_media + factor(year) +(Log_Asylum_rate*Amount_of_media_coverage+Log_Asylum_rate*Amount_of_national_media-1|Land), data=dt_n, family=binomial(link = "logit"), 
+                control= glmerControl(optimizer="bobyqa"),nAGQ =0)
+summary(model_2)
+
+exp(coef(model_2)$Land)
+
+re_model_2 <-ranef(model_2, which="Land", conVar=TRUE)
+names(re_model_2)<-"The effect of asylum application rate and media salience across regions"
+lattice::dotplot(re_model_2, scales = list(x =list(relation = 'free')))
+
+saveRDS(model_2, file = "U:/media_salience/Paper1_output_second_analysis/model_2.rds")
+
+```
+
+
+### Prediction for random slope with constrained intercept
+```{r}
+# Odds table for main preditors
+
+tab_model(model_2)
+
+```
+
+```{r}
+
+# Extract out the fixed-effect slope for our main effect
+slope_2 <- rep(fixef(model_2)['Log_Asylum_rate:Amount_of_media_coverage'],16)
+
+# Extract out the random-effect slopes for Land
+Land_2 <- ranef(model_2)$Land
+
+# Create a new column for the slope
+Land_2$slope <- Land_2$`Log_Asylum_rate:Amount_of_media_coverage` + slope_2
+
+# Use the row names to create a Land name column
+Land_2$Land <- rownames(Land_2)
+Land_2$intercept <- fixef(model_2)['(Intercept)']
+
+ggplot(data=Land_2)+
+  geom_abline(aes(slope=slope,intercept=intercept,color=Land))+
+  theme_minimal()+
+  xlim(c(0,2))+ylim(c(-3,3))+
+  scale_colour_discrete(breaks=unique(Land_1$Land[order(Land_1$slope, decreasing = TRUE)]))
+
+
+```
+
+
+
+### marginal effects
+```{r}
+# marginal effects of year
+library(ggeffects)
+pd_yr_2<- ggpredict(model_2,term="year")
+plot(pd_yr_2)+ylim(c(0,0.5))
+
+```
+
+```{r}
+# marginal effects of log Asylum rate/ Article
+pd_ASLr_2<- ggpredict(model_2,term="Log_Asylum_rate[all]")
+plot(pd_ASLr_2)
+
+pd_Artl_2<- ggpredict(model_2,term="Amount_of_media_coverage [all]")
+plot(pd_Artl_2)
+
+```
+
+```{r}
+
+ggpredict(model_2,term=c("Log_Asylum_rate [all]","Amount_of_media_coverage")) %>% plot()
+
+ggpredict(model_2,term=c("Log_Asylum_rate [all]","Amount_of_media_coverage"),type = "re") %>% plot()
+
+```
+  
+```{r}
+
+ggpredict(model_2,term=c("Log_Asylum_rate [all]","Amount_of_national_media [0.01, 0.015, 0.02]")) %>% plot()
+
+ggpredict(model_2,term=c("Log_Asylum_rate [all]","Amount_of_national_media [0.01, 0.015, 0.02]"),type = "re") %>% plot()
+
+```
+
+## model with interation with national media +controls : Log_Asylum_rate*Amount_of_media_coverage+ Log_Asylum_rate*Amount_of_national_media + Edu + nationality + sex + age
+### model2.1
+
+```{r}
+# random slope with constrained intercept
+
+model_2.1 <-glmer(wrimm ~ 1+Log_Asylum_rate*Amount_of_media_coverage + Log_Asylum_rate*Amount_of_national_media  + Edu + nationality + sex + age + factor(year) +(Log_Asylum_rate*Amount_of_media_coverage+Log_Asylum_rate*Amount_of_national_media-1|Land), data=dt_n, family=binomial(link = "logit"), 
+                control= glmerControl(optimizer="bobyqa"),nAGQ =0)
+summary(model_2.1)
+
+exp(coef(model_2.1)$Land)
+
+re_model_2.1 <-ranef(model_2.1, which="Land", conVar=TRUE)
+names(re_model_2.1)<-"The effect of asylum application rate and media salience across regions"
+lattice::dotplot(re_model_2.1, scales = list(x =list(relation = 'free')))
+
+saveRDS(model_2.1, file = "U:/media_salience/Paper1_output_second_analysis/model_2_1.rds")
+
+```
+
+
+### Prediction for random slope with constrained intercept
+```{r}
+# Odds table for main predictors
+
+tab_model(model_2.1)
+
+```
+
+```{r}
+
+# Extract out the fixed-effect slope for our main effect
+slope_2.1 <- rep(fixef(model_2.1)['Log_Asylum_rate:Amount_of_media_coverage'],16)
+
+# Extract out the random-effect slopes for Land
+Land_2.1 <- ranef(model_2.1)$Land
+
+# Create a new column for the slope
+Land_2.1$slope <- Land_2.1$`Log_Asylum_rate:Amount_of_media_coverage` + slope_2.1
+
+# Use the row names to create a Land name column
+Land_2.1$Land <- rownames(Land_2.1)
+Land_2.1$intercept <- fixef(model_2.1)['(Intercept)']
+
+ggplot(data=Land_2.1)+
+  geom_abline(aes(slope=slope,intercept=intercept,color=Land))+
+  theme_minimal()+
+  xlim(c(0,2))+ylim(c(-3,3))+
+  scale_colour_discrete(breaks=unique(Land_1$Land[order(Land_1$slope, decreasing = TRUE)]))
+
+
+```
+
+
+
+
+
+
+
+## model with interation with national media  : Log_Asylum_rate*Amount_of_media_coverage+ Log_Asylum_rate*Amount_of_national_media (2 seperate leveles)
+### model3
+
+```{r}
+# random slope with constrained intercept
+
+model_3 <-glmer(wrimm ~ 1+Log_Asylum_rate*Amount_of_media_coverage + Log_Asylum_rate*Amount_of_national_media + factor(year) +(Log_Asylum_rate*Amount_of_media_coverage-1|Land)+(Log_Asylum_rate*Amount_of_national_media-1|Land), data=dt_n, family=binomial(link = "logit"), control= glmerControl(optimizer="bobyqa"),nAGQ =0)
+
+summary(model_3)
+
+exp(coef(model_3)$Land)
+
+re_model_3 <-ranef(model_3, which="Land", conVar=TRUE)
+names(re_model_3)<-"The effect of asylum application rate and media salience across regions"
+lattice::dotplot(re_model_3, scales = list(x =list(relation = 'free')))
+
+saveRDS(model_3, file = "U:/media_salience/Paper1_output_second_analysis/model_3.rds")
+
+```
+```{r}
+# Odds table for main predictors
+
+tab_model(model_3)
+
+```
+
+### Log_Asylum_rate:Amount_of_national_media
+##model 3.1
+
+```{r}
+# random slope with constrained intercept
+
+model_3.1 <-glmer(wrimm ~ 1+Log_Asylum_rate*Amount_of_media_coverage + Log_Asylum_rate*Amount_of_national_media + factor(year) +(Log_Asylum_rate*Amount_of_media_coverage-1|Land)+(Log_Asylum_rate:Amount_of_national_media-1|Land), data=dt_n, family=binomial(link = "logit"), control= glmerControl(optimizer="bobyqa"),nAGQ =0)
+
+summary(model_3.1)
+
+exp(coef(model_3.1)$Land)
+
+re_model_3.1 <-ranef(model_3.1, which="Land", conVar=TRUE)
+names(re_model_3.1)<-"The effect of asylum application rate and media salience across regions"
+lattice::dotplot(re_model_3.1, scales = list(x =list(relation = 'free')))
+
+saveRDS(model_3.1, file = "U:/media_salience/Paper1_output_second_analysis/model_3_1.rds")
+
+```
+
+```{r}
+# Odds table for main predictors
+
+tab_model(model_3.1)
+
+```
+
+# random slope :1+Log_Asylum_rate*Amount_of_media_coverage + Log_Asylum_rate*Amount_of_national_media + factor(year) +(Log_Asylum_rate*Amount_of_media_coverage-1|Land)+(Log_Asylum_rate:Amount_of_national_media|Land)
+### Model4
+
+```{r}
+# random slope 
+
+model_4 <-glmer(wrimm ~ 1+Log_Asylum_rate*Amount_of_media_coverage + Log_Asylum_rate:Amount_of_national_media + factor(year) +(Log_Asylum_rate:Amount_of_media_coverage|Land)+(Log_Asylum_rate:Amount_of_national_media|Land), data=dt_n, family=binomial(link = "logit"), control= glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=1000000)))
+
+summary(model_4)
+
+exp(coef(model_4)$Land)
+
+re_model_4 <-ranef(model_4, which="Land", conVar=TRUE)
+names(re_model_4)<-"The effect of asylum application rate and media salience across regions"
+lattice::dotplot(re_model_4, scales = list(x =list(relation = 'free')))
+
+saveRDS(model_4, file = "U:/media_salience/Paper1_output_second_analysis/model_4.rds")
+
+```
+
+```{r}
+# Odds table for main predictors
+
+tab_model(model_3.1)
+
+```
+
+
+
+
+ 
+# Effect size 
+### Note : effect size/ R^2 remains problematic
+```{r} 
+# effect size (The approach of Jarrett Byrnes): the correlation between the fitted and the observed values, which could be seen as general R^2
+r2.corr.mer <- function(m) {
+  lmfit <-  lm(model.response(model.frame(m)) ~ fitted(m))
+  summary(lmfit)$r.squared
+}
+
+#Then apply the function on the different models
+r2.corr.mer(logit_ri)
+r2.corr.mer(logit_rsci)
+r2.corr.mer(logit_rs)
+
+
+```
+```{r}
+# piecewiseSEM is a package developed by Jarrett Byrnes
+# piecewiseSEM::rsquared(logit_ri)
+# piecewiseSEM::rsquared(logit_rsci)
+# piecewiseSEM::rsquared(logit_rs)
+```
+  
+#### For mixed-effects models, R_GLMM² comes in two types: marginal and conditional. 
+Marginal R_GLMM² represents the variance explained by the fixed effects, and is defined as: 
+R_GLMM(m)² = (σ_f²) / (σ_f² + σ_α² + σ_ε²) 
+
+Conditional R_GLMM² is interpreted as a variance explained by the entire model, including both fixed and random effects, and is calculated according to the equation: 
+
+R_GLMM(c)² = (σ_f² + σ_α²) / (σ_f² + σ_α² + σ_ε²) 
+
+where σ_f² is the variance of the fixed effect components, σ_α² is the variance of the random effects, and σ_ε² is the “observation-level” variance. 
+
+Three different methods are available for deriving the observation-level variance σ_\varepsilon: the delta method, lognormal approximation and using the trigamma function. The delta method can be used with for all distributions and link functions, while lognormal approximation and trigamma function are limited to distributions with logarithmic link. Trigamma-estimate is recommended whenever available. Additionally, for binomial distributions, theoretical variances exist specific for each link function distribution.  
+Source: https://rdrr.io/cran/MuMIn/man/r.squaredGLMM.html
+
+
+#### source of formular: https://stackoverflow.com/questions/67586900/how-can-i-calculate-the-marginal-r2-for-linear-mixed-models-in-spss-for-a-simpl  
+####### An important discussion! But remain unsolved!   
+
+
+#### clculate R^2m and R^m manually
+##### Vf (fixed effect variance), Vr (random effect variance), Ve (residual variance)  
+
+> the residual variance (Ve) should be (π^2)/3 for generalized linear mixed models with binomial data and logit link function (Nakagawa, S., Schielzeth, H. 2010. Repeatability for Gaussian and non-Gaussian data: a practical guide for biologists. Biol. Rev. 85:935-956.).  
+Source: https://stats.stackexchange.com/questions/128750/residual-variance-for-glmer 
+
+
+```{r}
+Vf<- var(predict(logit_ri,re.form=NA))
+Vr <- insight::get_variance_random(logit_ri) 
+Ve <- (pi^2)/3  # or sigma(logit_ri)^2  # or using attr(VarCorr(logit_ri),"sc")  # all 3 models are equal to 1 (WHY? )
+
+R2m_ri <- Vf / (Vf + Vr + Ve)
+R2m_ri
+R2c_ri <- (Vf + Vr) / (Vf + Vr + Ve)
+R2c_ri
+
+```
+
+```{r}
+Vf<- var(predict(logit_rsci,re.form=NA))
+Vr <-  21.925834 
+Ve <- (pi^2)/3
+
+R2m_rsci <- Vf / (Vf + Vr + Ve)
+R2m_rsci
+R2c_rsci <- (Vf + Vr) / (Vf + Vr + Ve)
+R2c_rsci
+
+```
+
+```{r}
+Vf<- var(predict(logit_rs,re.form=NA))
+Vr <- 1.371361 + 0.354988
+Ve <- (pi^2)/3
+
+R2m_rs <- Vf / (Vf + Vr + Ve)
+R2m_rs
+R2c_rs <- (Vf + Vr) / (Vf + Vr + Ve)
+R2c_rs
+
+```
+
+## ICC (remain unsolved)
+- a measure of how much of the variation in the response variable, which is not attributed to fixed effects, is accounted for by a random effect. It is the ratio of the variance of the random effect to the total random variation. 
+- For the generalized model, the residual variance is a known constant. We will use (15/16) 2 π 2 /3 (15/16)2π2/3 as an estimate of the variance of the logistic distribution. 
+
+```{r}
+# ICC for random intercept (for ramdom slope... there's some problems)
+r1Var <- as.numeric(VarCorr(logit_ri)[["Land"]])
+residVar <- (15/16)^2 * pi^2 / 3
+r1Var
+residVar
+r1Var / (r1Var + residVar)
+
+```
+
+
+
+
+
+
+
+
+
+
+
