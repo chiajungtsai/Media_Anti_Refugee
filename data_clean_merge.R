@@ -43,7 +43,7 @@ dt$Land[dt$bula==14] <- "Sachsen"
 dt$Land[dt$bula==15] <- "Sachsen-Anhalt"
 dt$Land[dt$bula==16] <- "Thüringen"
 
-save(dt,file = "/soep_dt.rda")
+save(dt,file = "/dt_soep.rda")
 
 
 #### read in covariates EDU from GSOEP ####
@@ -246,8 +246,8 @@ load("U:/media_salience/Data/Media_by_Gdelt.rda")
 load("U:/media_salience/Data/Media_by_Gdelt_national.rda")
 
 # cleaned GSOEP data from above
-load("U:/media_salience/Data/dt_soep.rda") # contain hid, syear, pid, plj0046, bula, Land 
-load("U:/media_salience/Data/dt_soep_covariate.rda") # contain hid, syear, pid, sex_re, Land, higher_edu, 
+load("dt_soep.rda") # contain hid, syear, pid, plj0046, bula, Land 
+load("dt_soep_covariate.rda") # contain hid, syear, pid, sex_re, Land, higher_edu, 
 
 # clean state labels (all states names in English, beware if all "ü" is cleaned)
 dt$Land[dt$Land=="Niedersachsen"] <- "Lower Saxony"
@@ -293,7 +293,7 @@ dt_soep_covariate$Land[dt_soep_covariate$Land=="Baden-WÃ¼rttemberg"] <-"Baden-
 
 
 # Merge
-dt_1<- merge(dt,Land_year_longformat,by.x=c("syear","Land"),by.y = c("Year","Land"))
+dt_1 <- merge(dt,Land_year_longformat,by.x=c("syear","Land"),by.y = c("Year","Land"))
 Media_national <- Media_national %>% 
   setNames(paste0(names(.),"_national"))
 Media_national<- na.omit(Media_national) #national delete "NA"

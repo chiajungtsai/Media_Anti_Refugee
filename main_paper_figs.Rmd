@@ -1,0 +1,781 @@
+---
+title: "Second_analysis_figs"
+author: "Chia-Jung Tsai"
+date: '2022-08-25'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+library(tidyverse)
+library(ggplot2)
+library(pscl)
+library(jtools)
+library(haven)
+library(plm)
+library(gplots)
+library(sjPlot)
+library(sjmisc)
+library(geofacet)
+library(cowplot)
+
+
+options(scipen = 999)
+
+```
+
+
+#### Figure1: media on map
+```{r}
+library(eurostat)
+library(janitor)
+library(giscoR)
+library(sf)
+
+setwd('path to Gdelt data')
+load("Media_by_Gdelt.rda")
+
+# the built-in dataset of EU boundaries
+gd <- eurostat_geodata_60_2016 %>% 
+  clean_names()
+
+gd %>% 
+  ggplot(aes(geometry = geometry)) +
+  geom_sf()
+
+gdtr <- gd %>% 
+  st_transform(crs = 3035)
+
+gdtr %>% 
+  ggplot(aes(geometry = geometry)) +
+  geom_sf()
+
+gd_de <- gdtr %>% 
+  filter(cntr_code == "DE", levl_code == 1) 
+
+
+Media$GE_state <- Media$GE_state %>% tolower()
+gd_de$nuts_name <-gd_de$nuts_name %>% tolower() 
+gd_de <- gd_de %>% dplyr::rename(GE_state=nuts_name)
+
+
+dj_de <- left_join(gd_de, Media, "GE_state")
+dj_de <- dj_de %>% dplyr::rename(Year=Pub_Year)
+
+library(rmapshaper)
+
+bord <- gdtr %>% 
+  filter(cntr_code == "DE", levl_code == 1) %>% 
+  ms_innerlines() # only innerlines
+
+bord_all <- gdtr %>% 
+  filter(cntr_code == "DE", levl_code == 1) %>% 
+  ms_lines() # all lines
+
+
+```
+
+
+```{r}
+
+library(viridis)
+library(cowplot)
+
+```
+
+```{r}
+
+# border between East and West Germany
+
+East <-gisco_get_nuts(country = "DE",
+                      nuts_level = "1") %>%
+  filter(NUTS_NAME=="BRANDENBURG"|NUTS_NAME=="SACHSEN-ANHALT"|NUTS_NAME=="THÜRINGEN"|NUTS_NAME=="SACHSEN"|NUTS_NAME=="MECKLENBURG-VORPOMMERN")
+
+
+```
+
+
+```{r}
+
+West <-gisco_get_nuts(country = "DE",
+                      nuts_level = "1") %>%
+  filter(NUTS_NAME=="SCHLESWIG-HOLSTEIN"|NUTS_NAME=="NIEDERSACHSEN"|NUTS_NAME=="HESSEN"|NUTS_NAME=="BAYERN")
+
+```
+
+```{r}
+shared_border <- st_intersection(East, West, model="closed")
+
+```
+
+```{r}
+
+# name table of German states
+
+dj_de <- dj_de %>% mutate(GE_State_abr= recode(GE_state, 
+"baden-württemberg"="BW",  
+"bayern"="BY",  
+"berlin"="BE",  
+"brandenburg"="BB",  
+"bremen"="HB",  
+"hamburg"="HH",  
+"hessen"="HE",  
+"niedersachsen"="NI",  
+"mecklenburg-vorpommern"="MV",  
+"nordrhein-westfalen"="NW",  
+"rheinland-pfalz"="RP",  
+"saarland"="SL",  
+"sachsen"="SN",  
+"sachsen-anhalt"="ST",  
+"schleswig-holstein"="SH",  
+"thüringen"="TH"))
+
+```
+
+```{r}
+
+# tiff("test.tiff", units="in", width = 12, height = 6.5, res=300) # high resolution (another way besides ggsave)
+
+dj_de %>% 
+  filter(Year %in% c(2014,2015,2016)) %>%
+  ms_simplify(keep=.10) %>%
+  ggplot()+
+  geom_sf(aes(fill = Artl), color = NA)+
+  geom_sf(data = bord_all, color = "gray92")+
+  geom_sf(data = shared_border, color = "black", size=1.5)+
+  scale_fill_gradient(low = "#FEF9E7", high = "#117A65",na.value="white",
+                      labels= c(".02",".04",".06"), breaks = c(0.02, 0.04, 0.06)) +
+  coord_sf(datum = NA)+
+  theme_map()+
+  theme(legend.position = "right",
+        legend.text = element_text(family = "serif"),
+        legend.key.size = unit(1,'cm'),
+        plot.title = element_text(hjust = 0, size = 16, face = "bold",family = "serif"),
+        plot.subtitle = element_text(hjust = 0,color = "black", size = 14, family = "serif"),
+        plot.caption = element_text(hjust = 0,size = 10, color = "black", family = "serif"),
+        strip.background = element_rect(colour=NA, fill=NA))+  
+  guides(fill = guide_colorbar(barwidth = 0.5, barheight = 3,
+                             title = "Ratio",  
+                             title.theme = element_text(size = 12, 
+                                                        family = "serif",
+                                                        colour = "black",
+                                                        angle = 0)))+
+  facet_grid(~Year) +
+  labs(title = "Figure 1: Salience of Refugee in Media in 16 German states",
+       subtitle = "Ratio of the amount of news events including a reference of refugees to the amount of overall news events in one state",
+       caption ="Data Source: The Gdelt Database \nBW=Baden-Württemberg; BY=Bayern (Bavaria); BE= Berlin; BB=Brandenburg; HB=Bremen; HH=Hamburg; HE=Hessen; NI=Niedersachsen (Lower Saxony); \nMV=Mecklenburg-Vorpommern (Mecklenburg-Western Pomerania); NW=Nordrhein-Westfalen (North Rhine-Westphalia); RP=Rheinland-Pfalz (Rhineland-Palatinate); \nSL=Saarland; SN=Sachsen (Saxony); ST=Sachsen-Anhalt (Saxony-Anhalt); SH=Schleswig-Holstein, TH=Thüringen (Thuringia)")
+
+
+p<-last_plot()
+p+geom_sf_text(aes(label=GE_State_abr), colour="black",size=3, family = "serif")
+
+# dev.off() # high resolution 
+
+  
+```
+
+
+```{r}
+ 
+ p<-last_plot()
+ ggplot2::ggsave(plot=p, filename = "U:/media_salience/Paper1_output_second_analysis/f1_map_2.tiff",
+       width = 12,
+       height = 6.5,
+       dpi = 400)
+
+```
+
+#### Figure 2 : Refugee on map
+```{r}
+
+setwd('path to data')
+load("Land_year_longformat.rda")
+
+# the built-in data_set of EU boundaries
+Land_year_longformat$Land <- Land_year_longformat$Land %>% tolower()
+Land_year_longformat <- Land_year_longformat %>% dplyr::rename(GE_state=Land)
+
+
+```
+
+
+```{r}
+
+# border between East and West Germany
+East <-gisco_get_nuts(country = "DE",
+                      nuts_level = "1") %>%
+  filter(NUTS_NAME=="BRANDENBURG"|NUTS_NAME=="SACHSEN-ANHALT"|NUTS_NAME=="THÜRINGEN"|NUTS_NAME=="SACHSEN"|NUTS_NAME=="MECKLENBURG-VORPOMMERN")
+
+```
+
+
+```{r}
+
+West <-gisco_get_nuts(country = "DE",
+                      nuts_level = "1") %>%
+  filter(NUTS_NAME=="SCHLESWIG-HOLSTEIN"|NUTS_NAME=="NIEDERSACHSEN"|NUTS_NAME=="HESSEN"|NUTS_NAME=="BAYERN")
+
+```
+
+```{r}
+shared_border <- st_intersection(East, West, model="closed")
+
+```
+
+
+```{r}
+rg_de <- left_join(gd_de, Land_year_longformat, "GE_state")
+
+```
+
+
+```{r}
+
+# name table of German states
+
+rg_de <- rg_de %>% mutate(GE_State_abr= recode(GE_state, 
+"baden-württemberg"="BW",  
+"bayern"="BY",  
+"berlin"="BE",  
+"brandenburg"="BB",  
+"bremen"="HB",  
+"hamburg"="HH",  
+"hessen"="HE",  
+"niedersachsen"="NI",  
+"mecklenburg-vorpommern"="MV",  
+"nordrhein-westfalen"="NW",  
+"rheinland-pfalz"="RP",  
+"saarland"="SL",  
+"sachsen"="SN",  
+"sachsen-anhalt"="ST",  
+"schleswig-holstein"="SH",  
+"thüringen"="TH"))
+
+```
+
+
+```{r}
+
+
+rg_de %>% 
+  filter(Year %in% c(2014,2015,2016)) %>%
+  ms_simplify(keep=.10) %>%
+  ggplot()+
+  geom_sf(aes(fill = Asl_rate), color = NA)+
+  geom_sf(data = bord_all, color = "gray92")+
+  geom_sf(data = shared_border, color = "black", size=1.5)+
+  scale_fill_gradient(low = "#FFFAA0", high = "#FF4500",na.value="white", 
+                      labels= c(".01",".02",".03"), breaks = c(0.01,0.02, 0.03)) +
+  coord_sf(datum = NA)+
+  theme_map()+
+  theme(legend.position = "right",
+        legend.key.size = unit(1,'cm'),
+        legend.text = element_text(family = "serif"),
+        plot.title = element_text(hjust = 0, size = 16, face = "bold", family = "serif"),
+        plot.subtitle = element_text(hjust = 0,color = "black", size = 14, family = "serif"),
+        plot.caption = element_text(hjust = 0,size = 10, color = "black",family = "serif"),
+        strip.background = element_rect(colour=NA, fill=NA))+  
+  guides(fill = guide_colorbar(barwidth = 0.5, barheight = 3,
+                             title = "Ratio",  
+                             title.theme = element_text(size = 12,
+                                                        family = "serif",
+                                                        colour = "black",
+                                                        angle = 0)))+
+  facet_grid(~Year) +
+  labs(title = "Figure 2: The Influx of Refugees in 16 German states",
+       subtitle = "Ratio of the number of arrivals of asylum seekers to the overall population in one state",
+       caption ="Data Source: German Federal Office of Statistics \nBW=Baden-Württemberg; BY=Bayern (Bavaria); BE= Berlin; BB=Brandenburg; HB=Bremen; HH=Hamburg; HE=Hessen; NI=Niedersachsen (Lower Saxony); \nMV=Mecklenburg-Vorpommern (Mecklenburg-Western Pomerania); NW=Nordrhein-Westfalen (North Rhine-Westphalia); RP=Rheinland-Pfalz (Rhineland-Palatinate); \nSL=Saarland; SN=Sachsen (Saxony); ST=Sachsen-Anhalt (Saxony-Anhalt); SH=Schleswig-Holstein, TH=Thüringen (Thuringia)")
+
+q<-last_plot()  
+q+geom_sf_text(aes(label=GE_State_abr), colour="black",size=3, family = "serif")
+q<-last_plot()
+
+
+```
+
+```{r}
+
+ggplot2::ggsave(plot=q, filename = "U:/media_salience/Paper1_output_second_analysis/f2_map_2.tiff",
+       width = 12,
+       height = 6.5,
+       dpi=400)
+
+```
+
+#### Figure 3 : random slope coeffiecients
+```{r}
+
+setwd("path to saved model from data analysis")
+model_1<- readRDS("Model_rsci.rds")
+
+```
+
+
+```{r}
+lattice::dotplot(ranef(model_1, which="Land", conVar=TRUE), scale= list(x =list(relation = 'free')))
+
+```
+
+
+```{r}
+str(rr1 <- ranef(model_1))
+str(dd <- as.data.frame(rr1))
+
+dd$term2 <- factor(dd$term, 
+       levels = c("Log_Asylum_rate", 
+                  "Amount_of_media_coverage", 
+                  "Log_Asylum_rate:Amount_of_media_coverage"),
+       labels = c("Refugee Presence", 
+                  "Refugee Salience in Media",
+                  "Refugee Presence*Refugee Salience in Media")) # here to change labels
+
+dd<- dd %>% mutate(Color = ifelse(grp=="Thuringia"|grp=="Saxony-Anhalt"|grp=="Saxony"|grp=="Mecklenburg-Western Pomerania"|grp=="Brandenburg","Former East","Former West"))
+dd$Color <- factor(dd$Color, levels = c("Former West","Former East"))
+dd<- dd %>% mutate(pointshape = ifelse(grp=="Thuringia"|grp=="Saxony-Anhalt"|grp=="Saxony"|grp=="Mecklenburg-Western Pomerania"|grp=="Brandenburg",2,1))
+
+```
+
+```{r}
+
+ggplot(dd, aes(y=grp,x=condval)) +
+        geom_point(dd,mapping= aes(color=Color),shape=dd$pointshape) + facet_wrap(~term2,scales="free_x") +
+        geom_errorbarh(mapping=aes(xmin=condval -2*condsd,
+                           xmax=condval +2*condsd, color=Color),height=0)+
+  theme_bw()+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.text = element_text(size = 12, family = "serif"),
+        plot.title = element_text(hjust = 0, size = 14, face = "bold", family = "serif"),
+        plot.subtitle = element_text(size = 10, family = "serif"),
+        plot.caption = element_text(hjust = 1, size = 10, color = "black", family = "serif"),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text( family = "serif"),
+        axis.text = element_text(family = "serif"),
+        strip.background = element_rect(),
+        strip.text = element_text(size = 8, family = "serif"))+  
+  scale_y_discrete(position = "right")+
+  labs(title = "Figure 3: The Random Slope Estimation across German States", 
+       caption = "Data Source: SOEP 2011-17, German Federal Office of Statistics & The GDELT Database") +
+  xlab("Random slope coefficients")
+
+r<-last_plot()
+r+geom_vline(xintercept = 0, linetype="dotted")
+
+```
+
+```{r}
+r<-last_plot()
+ggplot2::ggsave(plot=r, filename = "U:/media_salience/Paper1_output_second_analysis/f3_2_estimation.tiff",
+       width = 10,
+       height = 6.5,
+       dpi = 400)
+
+
+```
+
+#### Figure 3 : random slope across states (focus on the comparison of asylum and interation Asylum*media )
+```{r}
+
+dd_2<-subset(dd, term !="Amount_of_media_coverage")
+
+ggplot(dd_2, aes(y=grp,x=condval)) +
+        geom_point(dd_2,mapping= aes(color=Color),shape=dd_2$pointshape) + facet_wrap(~term2,scales="free_x") +
+        geom_errorbarh(mapping=aes(xmin=condval -2*condsd,
+                           xmax=condval +2*condsd, color=Color),height=0)+
+  theme_bw()+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.text = element_text(size = 13, family = "serif"),
+        plot.title = element_text(hjust = 0, size = 14, face = "bold", family = "serif"),
+        plot.subtitle = element_text(size = 10, family = "serif"),
+        plot.caption = element_text(hjust = 0, size = 12, color = "black", family = "serif"),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(family = "serif"),
+        axis.text.x = element_text(family = "serif", size = 12),
+        axis.text.y = element_text(family = "serif", size = 12),
+        strip.background = element_rect(),
+        strip.text = element_text(size = 8, family = "serif"))+  
+  scale_y_discrete(position = "right")+
+  labs(title = "Figure 3: The Random Slope Estimation across German States", 
+       caption = "This figure shows the effect of refugee influx and its interaction with media salience on the anti-immigration attitudes across states.\nData Source: SOEP 2011-17, German Federal Office of Statistics & The GDELT Database") +
+  xlab("Random slope coefficients")
+
+```
+
+```{r}
+r_2<-last_plot()
+r_2+geom_vline(xintercept = 0, linetype="dotted")
+
+r_2<-last_plot()
+ggplot2::ggsave(plot=r_2, filename = "U:/media_salience/Paper1_output_second_analysis/f3_2_estimation_rev.tiff",
+       width = 10,
+       height = 6.5,
+       dpi = 400)
+
+
+```
+
+
+### Figure 4: Prediction for states
+# https://strengejacke.github.io/ggeffects/articles/introduction_randomeffects.html
+```{r}
+
+pr1 <- ggeffects::ggpredict(model_1,term=c("Log_Asylum_rate [all]","Amount_of_media_coverage[0.01,0.02, 0.03,0.04]","Land"), type = "zi_random") 
+
+# saveRDS(pr1, file = "pr1.rds")
+# pr1 <- readRDS("pr1.rds") 
+
+```
+
+
+```{r}
+
+neworder <- c("Brandenburg","Mecklenburg-Western Pomerania", "Thuringia","Saxony-Anhalt","Saxony","Baden-Württemberg",
+              "Bavaria","Berlin","Bremen","Hamburg","Hesse","Lower Saxony","North Rhein-WestPhalia","Rheinland-Palatinate",
+              "Saarland","Schleswig-Holstein")
+
+library(plyr)  ## or dplyr (transform -> mutate)
+
+pr2 <- arrange(transform(pr1,
+             facet= factor(facet,levels=neworder)), facet)
+
+# saveRDS(pr2, file = "pr2.rds")
+# pr2 <- readRDS("pr2.rds") 
+
+```
+
+> https://stackoverflow.com/questions/60332202/conditionally-fill-ggtext-text-boxes-in-facet-wrap
+> change the strop color for different grid
+
+```{r}
+
+ library(ggplot2)
+ library(cowplot)
+ library(rlang)
+ library(ggtext)
+
+
+element_textbox_highlight <- function(..., hi.labels = NULL, hi.fill = NULL,
+                                      hi.col = NULL, hi.box.col = NULL) {
+  structure(
+    c(element_textbox(...),
+      list(hi.labels = hi.labels, hi.fill = hi.fill, hi.col = hi.col, hi.box.col = hi.box.col)
+    ),
+    class = c("element_textbox_highlight", "element_textbox", "element_text", "element")
+  )
+}
+
+element_grob.element_textbox_highlight <- function(element, label = "", ...) {
+  if (label %in% element$hi.labels) {
+    element$fill <- element$hi.fill %||% element$fill
+    element$colour <- element$hi.col %||% element$colour
+    element$box.colour <- element$hi.box.col %||% element$box.colour
+  }
+  NextMethod()
+}
+
+```
+
+```{r}
+
+ggplot(pr2, aes(x=x, y=predicted, colour=group)) + 
+  geom_line(size=0.5) +
+  facet_wrap(~facet) +
+  theme_bw() +
+  background_grid() +
+  scale_x_continuous(breaks = c(-6,-5,-4), labels = c("2.48","6.74","18.32"))+
+  theme(
+    strip.background = element_blank(),
+    strip.text = element_textbox_highlight(
+      size = 8,
+      color = "white", fill = "#999999", box.color = "#4A618C",
+      halign = 0.5, linetype = 0, 
+      r = unit(0, "pt"), width = unit(1, "npc"), 
+      # r is rouned edge
+      padding = margin(2, 0, 1, 0), margin = margin(3, 3, 3, 3),
+      # this is new relative to element_textbox():
+      hi.labels = c("Brandenburg","Mecklenburg-Western Pomerania","Thuringia","Saxony-Anhalt","Saxony"),
+      hi.fill = "#3b3a3a", hi.box.col = "#A6424A", hi.col = "white"
+    ),
+        panel.border = element_blank(),
+        legend.position = "right",
+        legend.title = element_text(size = 12, family = "serif"),
+        legend.text = element_text(size = 12, family = "serif"),
+        plot.title = element_text(hjust = 0, size = 14, face = "bold", family = "serif"),
+        plot.subtitle = element_text(size = 12, family = "serif"),
+        plot.caption = element_text(hjust = 0, size = 12, color = "black" ,family = "serif"),
+        axis.title.x = element_text(family = "serif", size = 12,face = "bold"),
+        axis.title.y = element_text(family = "serif", size = 12, face = "bold"),
+        axis.text = element_text(family = "serif", size = 12))+
+        scale_y_discrete(position = "left")+
+        scale_color_manual(name="Refugee Salience\nin Media",
+                           labels=c(0.01,0.02,0.03,0.04),
+                           values = c("#999999","#619CFF", "#00BA38", "#F8766D"))+
+        labs(title = "Figure 4: Predicted Probabilities across German states",
+             caption = c("This figure shows the predicted marginal effect of the interation of the refugee influx and the media salience of refugee on \nanti-immigration attitudes across 16 German states.\nData Source: SOEP 2011-17, German Federal Office of Statistics & The Gdelt Database \nNote: Ratio of asylum seekers has been log-tranformated in the model,therefore the interval is not equidistant.")) +
+        xlab("Share of asylum application to population")+
+        ylab("Ratio of people who very much worry about immigration")+ ylim(c(0.1,0.5))
+
+
+```
+
+```{r}
+s<-last_plot()
+ggplot2::ggsave(plot=s, filename = "U:/media_salience/Paper1_output_second_analysis/f4_2_marginal_effect.tiff",
+       width = 10,
+       height = 6.5,
+       dpi=400)
+
+```
+
+
+```{r}
+
+ggplot(pr2, aes(x=x, y=predicted, colour=group))+
+geom_line()+
+facet_wrap(.~facet)+
+geom_rect(data = subset(pr2, facet == "Brandenburg"), aes(fill = facet), xmin = -Inf,xmax = Inf, ymin = -Inf,ymax = Inf, alpha = 0.005)+
+theme_bw()+
+  theme(legend.position = "right",
+        plot.title = element_text(hjust = 0, size = 12, face = "bold"),
+        plot.subtitle = element_text(size = 10),
+        plot.caption = element_text(color = "Gray50"),
+        strip.background = element_rect(),
+        strip.text = element_text(size = 8))+
+  labs(title = "Figure 4: Predicted probabilities across German states", colour="Amount of news") +
+  xlab("Log Number of Asylum Rate")+
+  ylab("Anti-immigrant Attitudes")
+
+```
+
+```{r}
+
+ggeffects::ggpredict(model_1, term=c("Log_Asylum_rate [all]","Amount_of_media_coverage[0.01,0.02, 0.03,0.04]","Region"), type = "zi_random", se=TRUE) 
+
+```
+
+#### Figure 5: Prediction by East/ West Germany
+```{r}
+
+pr_4 <- ggeffects::ggpredict(model_1,term=c("Log_Asylum_rate [all]","Amount_of_media_coverage[0.01,0.04]"), condition = c(Land="Brandenburg",Land="Mecklenburg-Western Pomerania",Land="Thuringia",Land="Saxony-Anhalt",Land="Saxony"),type = "zi_random", se=TRUE) 
+
+# saveRDS(pr_4, file = "pr4.rds")
+# pr_4<- readRDS("pr4.rds") 
+
+pr_5 <- as.data.frame(pr_4)
+
+```
+
+```{r}
+# only East Germany 
+
+ggplot(pr_5, aes(x=x, y=predicted, colour=group, fill=group)) + 
+  geom_line(aes(group=factor(group)),size=0.5
+            ) +
+  geom_ribbon(aes(ymin=pr_5$conf.low, ymax=pr_5$conf.high), color=NA ,alpha=0.2, show.legend = FALSE)+
+  theme_bw() +
+  background_grid() +
+  scale_x_continuous(breaks = c(-6,-5,-4), labels = c("2.48","6.74","18.32"))+
+  theme(
+    strip.background = element_blank(),
+        panel.border = element_blank(),
+        legend.position = "right",
+        legend.title = element_text(size = 10, family = "serif"),
+        legend.text = element_text(size = 10, family = "serif"),
+        plot.title = element_text(hjust = 0, size = 14, face = "bold", family = "serif"),
+        plot.subtitle = element_text(size = 12, family = "serif"),
+        plot.caption = element_text(hjust = 1, size = 10, color = "black",family = "serif"),
+        axis.title.x = element_text(family = "serif"),
+        axis.title.y = element_text(family = "serif"),
+        axis.text = element_text(family = "serif"))+
+        scale_y_discrete(position = "left")+
+        scale_color_manual(name="Refugee Salience\nin Media",
+                           labels=c(0.01,0.04),
+                           values = c("#619CFF", "#F8766D"))+
+        scale_fill_manual(values = c("#619CFF", "#F8766D"))+
+        labs(title = "Figure 4.1: Predicted Probabilities in Former East Germany",
+             caption = " (Excludes Berlin) \n Data Source: SOEP 2011-17, German Federal Office of Statistics & The Gdelt Database \n Note: Ratio of asylum seekers has been log-tranformated in the model, therefore the interval is not equidistant.") +
+        xlab("Ratio of asylum seekers to total population (per 1000)")+
+        ylab("Ratio of people who very much worry about immigration") +ylim(c(0,1)) 
+
+```
+
+```{r}
+
+t<-last_plot()
+ggplot2::ggsave(plot=t, filename = "U:/media_salience/Paper1_output_second_analysis/f4.1_2_marginal_effect_East.tiff",
+       width = 10,
+       height = 6.5,
+       dpi= 400)
+
+```
+
+
+```{r}
+
+
+pr_6 <- ggeffects::ggpredict(model_1,term=c("Log_Asylum_rate [all]","Amount_of_media_coverage[0.01,0.04]"), condition = c(Land="Baden-Württemberg",
+              Land="Bavaria",Land="Bremen",Land="Hamburg",Land="Hesse",Land="Lower Saxony",Land="North Rhein-WestPhalia",Land="Rheinland-Palatinate",
+              Land="Saarland",Land="Schleswig-Holstein"),type = "zi_random", se=TRUE) 
+
+# saveRDS(pr_6, file = "pr6.rds")
+# pr_6 <- readRDS("pr6.rds")
+
+
+pr_7 <- as.data.frame(pr_6)
+
+```
+
+
+```{r}
+# only West Germany 
+
+ggplot(pr_7, aes(x=x, y=predicted, colour=group, fill=group)) + 
+  geom_line(aes(group=factor(group)),size=0.5
+            ) +
+  geom_ribbon(aes(ymin=pr_7$conf.low, ymax=pr_7$conf.high), color=NA ,alpha=0.2, show.legend = FALSE)+
+  theme_bw() +
+  background_grid() +
+  scale_x_continuous(breaks = c(-6,-5,-4), labels = c("2.48","6.74","18.32"))+
+  theme(
+    strip.background = element_blank(),
+        panel.border = element_blank(),
+        legend.position = "right",
+        legend.title = element_text(size = 10,family = "serif"),
+        legend.text = element_text(size = 10, family = "serif"),
+        plot.title = element_text(hjust = 0, size = 14, face = "bold", family = "serif"),
+        plot.subtitle = element_text(size = 12, family = "serif"),
+        plot.caption = element_text(hjust = 1, size = 10, color = "black", family = "serif"),
+        axis.title.x = element_text(family = "serif"),
+        axis.title.y = element_text(family = "serif"),
+        axis.text = element_text(family = "serif"))+
+        scale_y_discrete(position = "left")+
+        scale_color_manual(name="Refugee Salience\nin Media",
+                           labels=c(0.01,0.04),
+                           values = c("#619CFF", "#F8766D"))+
+        scale_fill_manual(values = c("#619CFF", "#F8766D"))+
+        labs(title = "Figure 4.2: Predicted Probabilities in Former West Germany",
+             caption = " (Excludes Berlin) \n Data Source: SOEP 2011-17, German Federal Office of Statistics & The Gdelt Database \n Note: Ratio of asylum seekers has been log-tranformated in the model, therefore the interval is not equidistant.") +
+        xlab("Ratio of asylum seekers to total population (per 1000)")+
+        ylab("Ratio of people who very much worry about immigration") +ylim(c(0,1)) 
+
+```
+
+```{r}
+
+u<-last_plot()
+ggplot2::ggsave(plot=u, filename = "U:/media_salience/Paper1_output_second_analysis/f4.2_2_marginal_effect_West.tiff",
+       width = 10,
+       height = 6.5,
+       dpi=400)
+
+```
+
+```{r}
+
+ggplot(pr_5, aes(x=x, y=predicted, colour=group, fill=group)) + 
+  geom_line(aes(group=factor(group)),size=0.5
+            ) +
+  geom_ribbon(aes(ymin=pr_5$conf.low, ymax=pr_5$conf.high), color=NA ,alpha=0.2, show.legend = FALSE)+
+  theme_bw() +
+  background_grid() +
+  scale_x_continuous(breaks = c(-6,-5,-4), labels = c("2.48","6.74","18.32"))+
+  theme(
+        strip.background = element_blank(),
+        panel.border = element_blank(),
+        legend.text = element_text(family = "serif"),
+        legend.title = element_text(family = "serif", size = 12),
+        plot.title = element_text(hjust = 0, size = 12, family = "serif"),
+        plot.subtitle = element_text(size = 12, family = "serif"),
+        plot.caption = element_text(hjust = 1, size = 12, color = "black", family = "serif"),
+        axis.title.x = element_text(family = "serif", size = 12, face = "bold"),
+        axis.title.y = element_text(family = "serif", size = 12, face = "bold"),
+        axis.text = element_text(family = "serif"))+
+        scale_y_discrete(position = "left")+
+        scale_color_manual(name="Refugee Salience\nin Media",
+                           labels=c(0.01,0.04),
+                           values = c("#619CFF", "#F8766D"))+
+        scale_fill_manual(values = c("#619CFF", "#F8766D"))+
+        labs(title = "Former East Germany") +
+        xlab("Share of asylum application to population")+
+        ylab("Ratio of people who very much worry about immigration")+ ylim(c(0.1,0.5)) 
+        # when ylim(c(0.1,0.5) too narrow may make the ribbon disappeared
+
+
+v <-last_plot()
+v <- v + theme(legend.position = "none")
+
+```
+
+```{r}
+# West Germany 
+
+ggplot(pr_7, aes(x=x, y=predicted, colour=group, fill=group)) + 
+  geom_line(aes(group=factor(group)),size=0.5
+            ) +
+  geom_ribbon(aes(ymin=pr_7$conf.low, ymax=pr_7$conf.high), color=NA ,alpha=0.2, show.legend = FALSE)+
+  theme_bw() +
+  background_grid() +
+  scale_x_continuous(breaks = c(-6,-5,-4), labels = c("2.48","6.74","18.32"))+
+  theme(
+    strip.background = element_blank(),
+        panel.border = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "right",
+        legend.title = element_text(size = 12, family = "serif"),
+        legend.text = element_text(size = 10, family = "serif"),
+        plot.title = element_text(hjust = 0, size = 12, family = "serif"),
+        plot.subtitle = element_text(size = 12, family = "serif"),
+        plot.caption = element_text(hjust = 1, size = 12, color = "black", family = "serif"),
+        axis.title.x = element_text(family = "serif", size = 12, face = "bold"))+
+        scale_y_discrete(position = "left")+
+        scale_color_manual(name="Refugee Salience\nin Media",
+                           labels=c(0.01,0.04),
+                           values = c("#619CFF", "#F8766D"))+
+        scale_fill_manual(values = c("#619CFF", "#F8766D"))+
+        labs(title = "Former West Germany") +
+        xlab("Share of asylum application to population")+
+        ylab("Ratio of people who very much worry about immigration")+ ylim(c(0.1,0.5))
+
+
+w<-last_plot()
+
+```
+
+```{r}
+
+title<- ggpubr::text_grob("Figure 5: Predicted Probabilities in Former East and West  Germany", family = "serif" ,color="black",face="bold", size=14, hjust = 0, x=0)
+
+text<- paste("This figure shows the marginal effect of the interation of the refugee influx and the media salience of refugee on anti-immigration attitudes",
+             "with 95% confidence intervals cross former East and West Germany (Excludes Berlin).",
+             "Data Source: SOEP 2011-17, German Federal Office of Statistics & The Gdelt Database", 
+             "Note: Ratio of asylum seekers has been log-tranformated in the model, therefore the interval is not equidistant.", sep="\n")
+
+caption<- ggpubr::text_grob(text,family = "serif",color="black", size=12, hjust=0, x=0)
+
+
+```
+
+```{r}
+
+# combine two figures
+x <- ggpubr::ggarrange(v,w,  widths = c(1.15,1.4))
+ggpubr::annotate_figure(x, top=title, bottom=caption)
+
+
+```
+
+```{r}
+
+y<-last_plot()
+ggplot2::ggsave(plot=y, filename = "U:/media_salience/Paper1_output_second_analysis/f5_2_marginal_effect_East_West.tiff",
+       width = 10,
+       height = 6.5,
+       dpi = 400)
+
+```
+
+
+

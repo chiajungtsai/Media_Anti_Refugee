@@ -1,5 +1,5 @@
 ---
-title: "media_expo_Anti_immi_second_model (Amount_of_media_coverage)"
+title: "Main analysis - Asylum influx and Media Salience"
 author: "Chia-Jung Tsai"
 date: "9 5 2021"
 output:
@@ -30,8 +30,6 @@ output:
 - Frn_log: log Number of Foreigners in each state by year 2010-2017 (e.g. log N of Foreigners in Berlin in 2010) 
 - Asl_log: log Number of Asylum applications in each state by year 2010-2017 (e.g. log N of Asylum applications in Berlin in 2010)
 
-
-
 ### media exposure (calculated via Gdelt Event database) 
 
 - Gdelt Event database (1979-2020)  
@@ -50,7 +48,6 @@ Before 2013, we use the information of the file name (e.g. 20210828.export.CSV.z
 
 - Geo-location: select by columns 'Actor1Geo_FullName', 'Actor2Geo_FullName' and 'ActionGeo_FullName' for the information 'country', 'state', and 'city.' 
 
-
 - ave_artcl: the average amount of articles relating with refugees in a year (e.g.average of total amount of Jan to Dec in 2010) 
 - ave_tone: the average sentiments of articles relating with refugees in a year (e.g.average of average sentiment of Jan to Dec in 2010)
 
@@ -65,7 +62,6 @@ Before 2013, we use the information of the file name (e.g. 20210828.export.CSV.z
 - concerns of immigrants= Rate of Asylum seekers*Media exposure (Amount_of_media_coverage)
 
 ### Theory: Politicize place assumption (Daniel Hopkins, 2010) people perceive the demographic changes in the surrounding area when the media coverage interacts with it 
-
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -85,94 +81,20 @@ options(scipen = 999)
 
 ```
 
-# Media data 
-## create Amount_of_media_coverage and Tone
 ```{r}
-
-load("U:/Gdelt/Gdelt/all_GM.rda")
-load("U:/Gdelt/Gdelt/ref_GM.rda")
-
-all_GM<- all_GM %>% mutate(GE_state=recode(GE_state,"Baden-WÃ¼berg"="Baden-Württemberg", 
-                       "ThÃ¼n"="Thüringen"))
-ref_GM <- ref_GM %>% mutate(GE_state=recode(GE_state,"Baden-WÃ¼berg"="Baden-Württemberg", 
-                                           "ThÃ¼n"="Thüringen"))
-
-A<- all_GM %>% 
-  filter(Pub_Year>=2010 & Pub_Year<=2017)%>%
-  group_by(Pub_Year,GE_state) %>%
-  summarise(Artl=sum(NumArticles), AvgTone=mean(AvgTone))%>%
-  ungroup()
-
-B<- ref_GM %>% 
-  filter(Pub_Year>=2010&Pub_Year<=2017)%>%
-  group_by(Pub_Year,GE_state) %>%
-  summarise(Artl=sum(NumArticles), AvgTone=mean(AvgTone))%>%
-  ungroup()
-
-Media <-A%>% 
-  full_join(B, by=c("Pub_Year","GE_state")) %>%
-  rename(Artl_all=Artl.x, AvgTone_all=AvgTone.x, Artl_ref=Artl.y, AvgTone_ref=AvgTone.y)
-
-Media<-Media %>% filter(GE_state!="Germany (general)")%>%
-  drop_na(GE_state)
-
-Media <-Media %>% mutate(Artl=Artl_ref/Artl_all, Tone=AvgTone_ref-AvgTone_all) 
-
-```
-```{r}
-plot(density(log(Media$Artl)))
-plot(density(Media$Tone))
+setwd('path to data')
+load("Data_Analysis.rda")
 
 ```
 
 ```{r}
-
-ggplot(na.omit(Media), aes(x = Pub_Year, y = Artl, group= GE_state, colour=GE_state)) +
-  geom_point() +geom_line()+ ggtitle("Average number of articles by German states")+ylim(c(0,0.06))
-
-ggplot(na.omit(Media), aes(x = Pub_Year, y = Tone, group= GE_state, colour=GE_state)) +
-  geom_point() +geom_line()+ ggtitle("Average tone of articles by German states")
-
-```
-  
-## trend of number of refugee Artlcles over time by states
-```{r}
-library(geofacet)
-ggplot2::ggplot(data=Media,aes(x=Pub_Year, y=Artl, group=1))+
-  theme(axis.text.x=element_text(angle=90))+
-  geom_line()+
-  facet_geo(~GE_state, grid="de_states_grid1")
-
-```
-  
-## trend of tone of refegee Artlcles over time by states
-```{r}
-
-ggplot2::ggplot(data=Media,aes(x=Pub_Year, y=Tone+3, group=1))+
-  theme(axis.text.x=element_text(angle=90))+
-  geom_line()+
-  facet_geo(~GE_state, grid="de_states_grid1", label = "name")
-
-```
-
-```{r}
-load("U:/Soep/dt.rda")
-load("U:/Soep/Land_year_longformat.rda")
-
-dt_1<- merge(dt,Land_year_longformat,by.x=c("syear","Land"),by.y = c("Year","Land"))
-dt_1 <- merge(dt_1, Media, by.x=c("syear","Land"), by.y = c("Pub_Year","GE_state"))
-dt_1<- dt_1 %>% select(hid, pid, syear, Land, plj0046, wrimm, 
-                       Asl, Frn, Ppl, Asl_rate, Frn_rate, 
-                       Asl_log, Frn_log, Ppl_log, 
-                       Artl, Tone) 
-dt_1<- dt_1 %>% drop_na() %>% mutate(logASLr=log(Asl_rate)) %>% rename(year=syear)
-```
-
-# Random intercept model
-```{r}
-
 #for revising the figure
-dt_n <- dt_1 %>% rename (Log_Asylum_rate=logASLr,Amount_of_media_coverage=Artl)
+dt_n <- dt_2 %>% rename (Log_Asylum_rate=logASLr, Amount_of_media_coverage=Artl, Amount_of_national_media = Artl_national, Edu=edu_is97,  
+                         sex =sex_re)
+
+```
+
+```{r}
 
 # random intercept
 logit_ri<-glmer(wrimm ~ 1+Log_Asylum_rate*Amount_of_media_coverage + factor(year) +(1|Land), 
@@ -184,6 +106,13 @@ lattice::dotplot(ranef(logit_ri, which="Land", conVar=TRUE), scale= list(y=list(
 exp(coef(logit_ri)$Land)
 
 ```
+
+```{r}
+saveRDS(logit_ri, file = "model_ri.rds")
+
+```
+
+
 ## Prediction for random intercept
 ```{r}
 # table for random intercept
@@ -241,7 +170,7 @@ ggpredict(logit_ri,term=c("Log_Asylum_rate[all]","Amount_of_media_coverage")) %>
 
 ```
   
-# model checking and diagnostics for random intercept model (not so sure)
+# model checking and diagnostics for random intercept model 
 ```{r}
 # model checking and diagnostics for random intercept
 
@@ -258,6 +187,7 @@ ggplot(data.frame(x2=dt_n$Amount_of_media_coverage,pearson=residuals(logit_ri,ty
 
 
 ```
+
 ```{r}
 # Independence (if the x1 x2 correlate with group1) :  Log_Asylum_rate correlates with group effect (fixed effect may be biased)
 
@@ -280,6 +210,7 @@ fixef(logit_ri)
 glmcoefs[1:3]
 
 ```
+
 ```{r}
 
 # level 1 QQ plot (to check normality)
@@ -288,13 +219,8 @@ qqline(residuals(logit_ri))
 
 hist(residuals(logit_ri)) 
 
-
-
-# level 2 QQ plot (to check normality) : does not work 
-# stats::qqnorm(logit_ri, ~ranef(.)) 
-# qqnorm(logit_ri, ~ resid(., type = "p") | year, abline = c(0, 1))
-
 ```
+
 ```{r}
 # Sensitivity to data (check that your model is not influenced by one or a small set of observations)
 
@@ -322,6 +248,12 @@ re_rsci<-ranef(logit_rsci, which="Land", conVar=TRUE)
 names(re_rsci)<-"Figure 3:The effect of asylum application rate and media salience across regions"
 lattice::dotplot(re_rsci, scales = list(x =list(relation = 'free')))
 
+
+```
+
+
+```{r}
+saveRDS(logit_rsci, file = "model_rsci.rds")
 
 ```
   
@@ -384,7 +316,7 @@ ggpredict(logit_rsci,term=c("Log_Asylum_rate [all]","Amount_of_media_coverage"),
 
 ```
   
-## model checking and diagnostics for random slope with constrained intercept (not so sure)
+## model checking and diagnostics for random slope with constrained intercept 
 ```{r}
 # model checking and diagnostics for random slope with constrained intercept
 # linearity of x (residual plot of x)
@@ -432,14 +364,10 @@ qqline(residuals(logit_rsci))
 
 hist(residuals(logit_rsci)) 
 
-# level 2 QQ plot (to check normality) : does not work 
-# stats::qqnorm(logit_rsci, ~ranef(.)) 
-# qqnorm(logit_rsci, ~ resid(., type = "p") | year, abline = c(0, 1))
-
-
 ```
+
 ```{r}
-# Sensitivity to data (check that your model is not influenced by one or a small set of observations)
+# Sensitivity to data 
 
 ggplot(data.frame(lev=hatvalues(logit_rsci),pearson=residuals(logit_rsci,type="pearson")),
       aes(x=lev,y=pearson)) +
@@ -467,6 +395,13 @@ lattice::dotplot(re_rs, scales = list(x =list(relation = 'free')))
 
 
 ```
+
+
+```{r}
+saveRDS(logit_rs, file = "model_rs.rds")
+
+```
+
   
 ## Prediction for random slope model
 ```{r}
@@ -475,7 +410,6 @@ lattice::dotplot(re_rs, scales = list(x =list(relation = 'free')))
 tab_model(logit_rs)
 
 ```
-
 
 
 ```{r}
@@ -575,15 +509,10 @@ qqline(residuals(logit_rs))
 
 hist(residuals(logit_rs)) 
 
-# level 2 QQ plot (to check normality) : does not work 
-# stats::qqnorm(logit_rs, ~ranef(.)) 
-# qqnorm(logit_rs, ~ resid(., type = "p") | year, abline = c(0, 1))
-
-
 ```
 
 ```{r}
-# Sensitivity to data (check that your model is not influenced by one or a small set of observations)
+# Sensitivity to data 
 
 ggplot(data.frame(lev=hatvalues(logit_rs),pearson=residuals(logit_rsci,type="pearson")),
       aes(x=lev,y=pearson)) +
@@ -602,8 +531,9 @@ anova(logit_ri,logit_rsci,logit_rs)
 ```
   
 # Effect size 
-### Note : effect size/ R^2 remains problematic
+### Note : effect size/ R^2 
 ```{r} 
+
 # effect size (The approach of Jarrett Byrnes): the correlation between the fitted and the observed values, which could be seen as general R^2
 r2.corr.mer <- function(m) {
   lmfit <-  lm(model.response(model.frame(m)) ~ fitted(m))
@@ -617,13 +547,7 @@ r2.corr.mer(logit_rs)
 
 
 ```
-```{r}
-# piecewiseSEM is a package developed by Jarrett Byrnes
-# piecewiseSEM::rsquared(logit_ri)
-# piecewiseSEM::rsquared(logit_rsci)
-# piecewiseSEM::rsquared(logit_rs)
-```
-  
+
 #### For mixed-effects models, R_GLMM² comes in two types: marginal and conditional. 
 Marginal R_GLMM² represents the variance explained by the fixed effects, and is defined as: 
 R_GLMM(m)² = (σ_f²) / (σ_f² + σ_α² + σ_ε²) 
@@ -638,10 +562,6 @@ Three different methods are available for deriving the observation-level varianc
 Source: https://rdrr.io/cran/MuMIn/man/r.squaredGLMM.html
 
 
-#### source of formular: https://stackoverflow.com/questions/67586900/how-can-i-calculate-the-marginal-r2-for-linear-mixed-models-in-spss-for-a-simpl  
-####### An important discussion! But remain unsolved!   
-
-
 #### clculate R^2m and R^m manually
 ##### Vf (fixed effect variance), Vr (random effect variance), Ve (residual variance)  
 
@@ -650,9 +570,9 @@ Source: https://stats.stackexchange.com/questions/128750/residual-variance-for-g
 
 
 ```{r}
-Vf<- var(predict(logit_ri,re.form=NA))
+Vf <- var(predict(logit_ri,re.form=NA))
 Vr <- insight::get_variance_random(logit_ri) 
-Ve <- (pi^2)/3  # or sigma(logit_ri)^2  # or using attr(VarCorr(logit_ri),"sc")  # all 3 models are equal to 1 (WHY? )
+Ve <- (pi^2)/3  
 
 R2m_ri <- Vf / (Vf + Vr + Ve)
 R2m_ri
@@ -682,20 +602,6 @@ R2m_rs <- Vf / (Vf + Vr + Ve)
 R2m_rs
 R2c_rs <- (Vf + Vr) / (Vf + Vr + Ve)
 R2c_rs
-
-```
-
-## ICC (remain unsolved)
-- a measure of how much of the variation in the response variable, which is not attributed to fixed effects, is accounted for by a random effect. It is the ratio of the variance of the random effect to the total random variation. 
-- For the generalized model, the residual variance is a known constant. We will use (15/16) 2 π 2 /3 (15/16)2π2/3 as an estimate of the variance of the logistic distribution. 
-
-```{r}
-# ICC for random intercept (for ramdom slope... there's some problems)
-r1Var <- as.numeric(VarCorr(logit_ri)[["Land"]])
-residVar <- (15/16)^2 * pi^2 / 3
-r1Var
-residVar
-r1Var / (r1Var + residVar)
 
 ```
 
